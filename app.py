@@ -3,6 +3,9 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 from tkcalendar import DateEntry
 from docxtpl import DocxTemplate
+from docx import Document
+from docxcompose.composer import Composer
+from pathlib import Path
 import os
 
 root = tk.Tk()
@@ -15,6 +18,7 @@ main_frame.pack(fill="both", expand=True, padx=5, pady=5)
 canvas = tk.Canvas(main_frame)
 scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
 scrollable_frame = tk.Frame(canvas)
+
 
 scrollable_frame.bind(
     "<Configure>",
@@ -57,14 +61,35 @@ l_text_t = add_label_entry(5, "Текст письма:", "text", 6)
 pos_e = add_label_entry(6, "Должность отправителя:")
 name_e = add_label_entry(7, "Имя отправителя:")
 
+_annexes = "nope"
+
+annex_counter = 0
+row_counter = 8
+    
+annex_list = []
 
 def save_to_docx():
     context = get_form_data()
 
-    template_path = os.path.join(os.path.dirname(__file__), "Template/letter_template.docx")
-    doc = DocxTemplate(template_path)
+    letter_template_path = os.path.join(os.path.dirname(__file__), "Template/letter_template.docx")
+    annex_template_path = os.path.join(os.path.dirname(__file__), "Template/annex_template.docx")
+    doc = DocxTemplate(letter_template_path)
+    annex = DocxTemplate(annex_template_path)
+    file_paths = []
+    
+    filepath = os.path.join(os.path.dirname(__file__), "Temporary", "doc_temp.docx")
+    doc.render(context)
+    doc.save(filepath)
+    print("Главный документ отрендерен")
+    file_paths.append(filepath)
+    
+    for an in annex_list:
+        filepath = os.path.join(os.path.dirname(__file__), "Temporary", an[0].cget("text") + "_temp.docx")
+        annex.render(get_annex_data(an))
+        annex.save(filepath)
+        print(an[0].cget("text") + "отрендерен")
+        file_paths.append(filepath)
 
-    # Запрашиваем место сохранения
     file_path = filedialog.asksaveasfilename(
         defaultextension=".docx",
         filetypes=[("Word Documents", "*.docx")],
@@ -72,11 +97,33 @@ def save_to_docx():
     )
 
     if file_path:
-        # Вставляем данные в шаблон
-        doc.render(context)
-        doc.save(file_path)
+        merge_docs(file_paths, file_path)
         messagebox.showinfo("Успех", "Документ успешно сохранён!")
+        
+    folder = Path("Temporary")
+    for file_path in folder.glob("*"):
+        if file_path.is_file():
+            file_path.unlink()
+            print(f"Удалён temp файл: {file_path}")
 
+def merge_docs(file_paths, output_path):
+    merged_doc = Document(file_paths[0])
+    composer = Composer(merged_doc)
+    
+    for file_path in file_paths[1:]:
+        doc = Document(file_path)
+        composer.append(doc)
+    
+    composer.save(output_path)
+
+def annexes_to_text(list):
+    counter = 0
+    text = ""
+    for an in list:
+        counter += 1
+        text += an[0].cget("text") + f" на листе {counter}\n"
+    return text
+    
 def get_form_data():
     return {
         "org_name": org_e.get(),
@@ -86,11 +133,60 @@ def get_form_data():
         "purpose": purp_e.get(),
         "letter_text": l_text_t.get("1.0", tk.END).strip(),
         "sender_position": pos_e.get(),
-        "sender_name": name_e.get()
+        "sender_name": name_e.get(),
+        "annexes_list": annexes_to_text(annex_list)
     }
 
+def generate_annex(an_btn, btn):
+    global root
+    global annex_counter
+    global row_counter
+    global annex_list
+    annex_counter += 1
+    this_annex = []
+    
+    row_counter += 1
+    an_lab = tk.Label(scrollable_frame, text="Приложение " + str(annex_counter))
+    an_lab.grid(row=row_counter, column=0, columnspan=2, sticky="w")
+    this_annex.append(an_lab)
+    
+    row_counter += 1
+    purp_label = tk.Label(scrollable_frame, text="Назначение приложения")
+    purp_label.grid(row=row_counter, column=0, sticky="w", padx=5, pady=2)
+    an_purp = tk.Entry(scrollable_frame)
+    an_purp.grid(row=row_counter, column=1, sticky="ew", padx=5, pady=2)
+    this_annex.append(an_purp)
+    
+    row_counter += 1
+    purp_label = tk.Label(scrollable_frame, text="Текст приложения")
+    purp_label.grid(row=row_counter, column=0, sticky="w", padx=5, pady=2)
+    an_text = tk.Text(scrollable_frame, height=10)
+    an_text.grid(row=row_counter, column=1, sticky="nsew", padx=5, pady=2)
+    this_annex.append(an_text)
+    
+    row_counter += 1
+    an_btn.grid(row=row_counter, column=0, columnspan=2, pady=10)
+    
+    row_counter += 1
+    btn.grid(row=row_counter, column=0, columnspan=2, pady=10)
+    
+    annex_list.append(this_annex)
+
+def get_annex_data(an):
+    return {
+        "annex_num": an[0].cget("text"),
+        "purpose": purp_e.get(),
+        "date": date_d.get(),
+        "annex_theme": an[1].get(),
+        "annex_text": an[2].get("1.0", tk.END),
+    }
+    
+
 btn = tk.Button(scrollable_frame, text="Сохранить документ", command=save_to_docx)
-btn.grid(row=8, column=0, columnspan=2, pady=10)
+btn.grid(row=9, column=0, columnspan=2, pady=10)
+
+an_btn = tk.Button(scrollable_frame, text="Создать приложение", command=lambda: generate_annex(an_btn, btn))
+an_btn.grid(row=8, column=0, columnspan=2, pady=10)
 
 
 root.mainloop()
