@@ -137,6 +137,32 @@ def get_form_data():
         "annexes_list": annexes_to_text(annex_list)
     }
 
+def get_annex_data(an):
+    return {
+        "annex_num": an[0].cget("text"),
+        "purpose": purp_e.get(),
+        "date": date_d.get(),
+        "annex_theme": an[1].get(),
+        "annex_text": an[2].get("1.0", tk.END),
+    }
+    
+def destroy_annex(name):
+    global annex_counter
+    for an in annex_list:
+        if an[0].cget("text") == name:
+            for el in an:
+                el.destroy()
+            annex_list.remove(an)
+            break
+    
+    counter = 1
+    for an in annex_list:
+        an[0].config(text=f"Приложение {counter}")
+        an[5].config(text=f"Удалить приложение {counter}")
+        counter += 1
+        
+    annex_counter -= 1
+        
 def generate_annex(an_btn, btn):
     global root
     global annex_counter
@@ -158,11 +184,20 @@ def generate_annex(an_btn, btn):
     this_annex.append(an_purp)
     
     row_counter += 1
-    purp_label = tk.Label(scrollable_frame, text="Текст приложения")
-    purp_label.grid(row=row_counter, column=0, sticky="w", padx=5, pady=2)
+    text_label = tk.Label(scrollable_frame, text="Текст приложения")
+    text_label.grid(row=row_counter, column=0, sticky="w", padx=5, pady=2)
     an_text = tk.Text(scrollable_frame, height=10)
     an_text.grid(row=row_counter, column=1, sticky="nsew", padx=5, pady=2)
     this_annex.append(an_text)
+    
+    row_counter += 1
+    name = this_annex[0].cget("text")
+    del_btn = tk.Button(scrollable_frame, text=f"Удалить приложение {annex_counter}", command=lambda: destroy_annex(name))
+    del_btn.grid(row=row_counter, column=0, pady=10)
+    
+    this_annex.append(purp_label)
+    this_annex.append(text_label)
+    this_annex.append(del_btn)
     
     row_counter += 1
     an_btn.grid(row=row_counter, column=0, columnspan=2, pady=10)
@@ -172,15 +207,7 @@ def generate_annex(an_btn, btn):
     
     annex_list.append(this_annex)
 
-def get_annex_data(an):
-    return {
-        "annex_num": an[0].cget("text"),
-        "purpose": purp_e.get(),
-        "date": date_d.get(),
-        "annex_theme": an[1].get(),
-        "annex_text": an[2].get("1.0", tk.END),
-    }
-    
+
 
 btn = tk.Button(scrollable_frame, text="Сохранить документ", command=save_to_docx)
 btn.grid(row=9, column=0, columnspan=2, pady=10)
