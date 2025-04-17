@@ -1,3 +1,4 @@
+import tempfile
 import python_docs
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -5,8 +6,10 @@ from tkcalendar import DateEntry
 from docxtpl import DocxTemplate
 from docx import Document
 from docxcompose.composer import Composer
+from io import BytesIO
 from pathlib import Path
 import os
+import atexit
 
 root = tk.Tk()
 root.title("Letterer")
@@ -68,27 +71,31 @@ row_counter = 8
     
 annex_list = []
 
-def save_to_docx():
+
+def save_from_buffer():
     context = get_form_data()
 
     letter_template_path = os.path.join(os.path.dirname(__file__), "Template/letter_template.docx")
     annex_template_path = os.path.join(os.path.dirname(__file__), "Template/annex_template.docx")
     doc = DocxTemplate(letter_template_path)
     annex = DocxTemplate(annex_template_path)
-    file_paths = []
+    buffers = []
     
-    filepath = os.path.join(os.path.dirname(__file__), "Temporary", "doc_temp.docx")
+    
     doc.render(context)
-    doc.save(filepath)
-    print("Главный документ отрендерен")
-    file_paths.append(filepath)
+    doc_buffer = BytesIO()
+    doc.save(doc_buffer)
+    print("Главный документ отрендерен в буфер")
+    doc_buffer.seek(0)
+    buffers.append(doc_buffer)
     
     for an in annex_list:
-        filepath = os.path.join(os.path.dirname(__file__), "Temporary", an[0].cget("text") + "_temp.docx")
+        annex_buffer = BytesIO()
         annex.render(get_annex_data(an))
-        annex.save(filepath)
-        print(an[0].cget("text") + "отрендерен")
-        file_paths.append(filepath)
+        annex.save(annex_buffer)
+        print(an[0].cget("text") + "отрендерен в буфер")
+        annex_buffer.seek(0)
+        buffers.append(annex_buffer)
 
     file_path = filedialog.asksaveasfilename(
         defaultextension=".docx",
@@ -97,20 +104,54 @@ def save_to_docx():
     )
 
     if file_path:
-        merge_docs(file_paths, file_path)
+        merge_docs(buffers, file_path)
         messagebox.showinfo("Успех", "Документ успешно сохранён!")
-        
-    folder = Path("Temporary")
-    for file_path in folder.glob("*"):
-        if file_path.is_file():
-            file_path.unlink()
-            print(f"Удалён temp файл: {file_path}")
 
-def merge_docs(file_paths, output_path):
-    merged_doc = Document(file_paths[0])
+def preview_from_buffer():
+    context = get_form_data()
+
+    letter_template_path = os.path.join(os.path.dirname(__file__), "Template/letter_template.docx")
+    annex_template_path = os.path.join(os.path.dirname(__file__), "Template/annex_template.docx")
+    doc = DocxTemplate(letter_template_path)
+    annex = DocxTemplate(annex_template_path)
+    buffers = []
+    
+    doc.render(context)
+    doc_buffer = BytesIO()
+    doc.save(doc_buffer)
+    print("Главный документ отрендерен в буфер")
+    doc_buffer.seek(0)
+    buffers.append(doc_buffer)
+    
+    for an in annex_list:
+        annex_buffer = BytesIO()
+        annex.render(get_annex_data(an))
+        annex.save(annex_buffer)
+        print(an[0].cget("text") + " отрендерен в буфер")
+        annex_buffer.seek(0)
+        buffers.append(annex_buffer)
+        
+    merged_doc = Document(buffers[0])
     composer = Composer(merged_doc)
     
-    for file_path in file_paths[1:]:
+    for buf in buffers[1:]:
+        doc = Document(buf)
+        composer.append(doc)
+    
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp_docx:
+        composer.save(tmp_docx.name)
+        tmp_docx_path = tmp_docx.name
+    
+    try:
+        os.startfile(tmp_docx_path)
+    finally:
+        atexit.register(lambda: os.unlink(tmp_docx_path) if os.path.exists(tmp_docx_path) else None)
+
+def merge_docs(buffers, output_path):
+    merged_doc = Document(buffers[0])
+    composer = Composer(merged_doc)
+    
+    for file_path in buffers[1:]:
         doc = Document(file_path)
         composer.append(doc)
     
@@ -145,14 +186,17 @@ def get_annex_data(an):
         "annex_theme": an[1].get(),
         "annex_text": an[2].get("1.0", tk.END),
     }
-    
+ 
 def destroy_annex(name):
     global annex_counter
     for an in annex_list:
         if an[0].cget("text") == name:
+            print(f"Удаление {name}")
             for el in an:
+                print("Уничтожен виджет")
                 el.destroy()
             annex_list.remove(an)
+            print("Элемент удалён")
             break
     
     counter = 1
@@ -192,7 +236,7 @@ def generate_annex(an_btn, btn):
     
     row_counter += 1
     name = this_annex[0].cget("text")
-    del_btn = tk.Button(scrollable_frame, text=f"Удалить приложение {annex_counter}", command=lambda: destroy_annex(name))
+    del_btn = tk.Button(scrollable_frame, text=f"Удалить приложение {annex_counter}", command=lambda: destroy_annex(this_annex[0].cget("text")))
     del_btn.grid(row=row_counter, column=0, pady=10)
     
     this_annex.append(purp_label)
@@ -203,14 +247,18 @@ def generate_annex(an_btn, btn):
     an_btn.grid(row=row_counter, column=0, columnspan=2, pady=10)
     
     row_counter += 1
-    btn.grid(row=row_counter, column=0, columnspan=2, pady=10)
+    prev_btn.grid(row=row_counter, column=0, pady=10)
+    btn.grid(row=row_counter, column=1, pady=10)
     
     annex_list.append(this_annex)
 
 
 
-btn = tk.Button(scrollable_frame, text="Сохранить документ", command=save_to_docx)
-btn.grid(row=9, column=0, columnspan=2, pady=10)
+btn = tk.Button(scrollable_frame, text="Сохранить документ", command=save_from_buffer)
+btn.grid(row=9, column=1, pady=10)
+
+prev_btn = tk.Button(scrollable_frame, text="Предпросмотр", command=preview_from_buffer)
+prev_btn.grid(row=9, column=0, pady=10)
 
 an_btn = tk.Button(scrollable_frame, text="Создать приложение", command=lambda: generate_annex(an_btn, btn))
 an_btn.grid(row=8, column=0, columnspan=2, pady=10)
