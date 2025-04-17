@@ -10,6 +10,7 @@ from io import BytesIO
 from pathlib import Path
 import os
 import atexit
+import re
 
 root = tk.Tk()
 root.title("Letterer")
@@ -252,12 +253,46 @@ def generate_annex(an_btn, btn):
     
     annex_list.append(this_annex)
 
+def validate_data(command):
+    info = ""
+    if(org_e.get() == ""):
+        info += "Имя организации!\n"
+    if(from_t.get("1.0", tk.END).strip() == ""):
+        info += "От кого!\n"
+    if(to_t.get("1.0", tk.END).strip() == ""):
+        info += "Кому!\n"
+    if(purp_e.get() == ""):
+        info += "Назначение письма!\n"
+    if(l_text_t.get("1.0", tk.END).strip() == ""):
+        info += "Текст письма!\n"
+    if(pos_e.get() == ""):
+        info += "Должность отправителя!\n"
+    if(name_e.get() == ""):
+        info += "Имя отправителя!\n"
+    
+    for an in annex_list:
+        if(an[1].get() == "" or not(re.search('[а-яА-Я]', an[2].get("1.0", tk.END)))):
+            name = an[0].cget("text")
+            info += f"\n{name}:\n"
+            text = an[2].get("1.0", tk.END)
+            print(f"Текст:{text}")
+            if(an[1].get() == ""):
+                info += "Тема приложения!\n"
+            if(not(re.search('[а-яА-Я]', an[2].get("1.0", tk.END)))):
+                info += "Текст приложения!\n"
 
+    if (info == ""):
+        if(command == "save"):
+            save_from_buffer()
+        if(command == "preview"):
+            preview_from_buffer()
+    else:
+        messagebox.showerror("Ошибка! Нет данных в указанных полях!", info)
 
-btn = tk.Button(scrollable_frame, text="Сохранить документ", command=save_from_buffer)
+btn = tk.Button(scrollable_frame, text="Сохранить документ", command=lambda: validate_data("save"))
 btn.grid(row=9, column=1, pady=10)
 
-prev_btn = tk.Button(scrollable_frame, text="Предпросмотр", command=preview_from_buffer)
+prev_btn = tk.Button(scrollable_frame, text="Предпросмотр", command=lambda: validate_data("preview"))
 prev_btn.grid(row=9, column=0, pady=10)
 
 an_btn = tk.Button(scrollable_frame, text="Создать приложение", command=lambda: generate_annex(an_btn, btn))
